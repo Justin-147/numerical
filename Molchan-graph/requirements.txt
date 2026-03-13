@@ -1,0 +1,9 @@
+# 核心依赖（运行 Molchan_graph_compute.py 必需）
+numpy
+pandas
+matplotlib
+scipy
+
+# 可选：左上角空间图使用 cartopy 底图时安装（程序内 USE_CARTOPY_MAP=True 时）
+# cartopy
+

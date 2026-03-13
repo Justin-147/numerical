@@ -1,0 +1,8 @@
+# 核心依赖（运行 trend_anomaly_single.py 必需）
+numpy
+pandas
+scipy
+matplotlib
+
+# 可选：右上角空间图使用 cartopy 底图时安装（程序内 USE_CARTOPY_MAP=True 时）
+# cartopy
