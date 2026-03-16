@@ -84,9 +84,28 @@
 
 ---
 
+## 构造运动 / GNSS 基线
+
+### fault-movement-anomaly（GNSS 基线长度与方位角）
+
+**基于 CENC GNSS 台站数据的基线长度与方位角分析。**
+
+- **主程序**：`fault-movement-anomaly/GNSS-baseline.py`
+- **说明文档**：`fault-movement-anomaly/GNSS-baseline_README.md`（仅针对该程序，便于后续在本目录下新增其它程序时区分）。
+- **依赖文件**：`fault-movement-anomaly/GNSS-baseline_requirements.txt`，安装方式：
+
+  ```bash
+  cd fault-movement-anomaly
+  pip install -r GNSS-baseline_requirements.txt
+  ```
+
+- **功能概览**：读取两站 CENC GNSS `.neu` 数据，按十进制年对齐共同时段，调用与 MATLAB `computeBaseLine.m` 等价的 WGS‑84 椭球算法逐历元计算基线长度与方位角，转为相对变化量并去趋势，输出 `*_baseline.txt` / `*_baseline_detrend.txt` 及对应 PNG 图件。
+
+---
+
 ## 依赖与运行方式
 
-- 各子目录一般提供 `requirements.txt`，在对应目录下执行 `pip install -r requirements.txt` 安装依赖。
+- 各子目录一般提供 `requirements.txt`（或类似专用命名的依赖文件，例如 `fault-movement-anomaly/GNSS-baseline_requirements.txt`），在对应目录下执行 `pip install -r <依赖文件名>` 安装依赖。
 - 程序入口多为各主程序文件末尾的 `if __name__ == "__main__":`，在脚本内修改数据路径、台站、震级、阈值、预报期等参数后运行，例如：
   ```bash
   cd cycle-related-anomaly && python cycle_anomaly_single.py
@@ -103,6 +122,7 @@
 numerical/
 ├── README.md                 # 本文件
 ├── extract_columns.py        # 多列提取
+├── fault-movement-anomaly/   # GNSS 基线长度与方位角分析（GNSS-baseline 及后续构造运动相关程序）
 ├── R-value/                  # R 值评估
 ├── Molchan-graph/            # Molchan 图评估
 ├── cycle-related-anomaly/     # 破年变异常
@@ -110,3 +130,4 @@ numerical/
 ├── pdf-related-anomaly/       # 概率密度拟合异常
 └── pdf-test/                 # PDF 合成数据与单窗绘图示例
 ```
+
