@@ -12,11 +12,11 @@
 
 ## 2. 数据说明
 
-- 源数据格式与 data 目录中的 CENC GNSS 文件一致（如 `data/SCLH_raw.neu`、`SCTQ_raw.neu`）：
+- 源数据格式与 GNSS-Data 目录中的 CENC GNSS 文件一致（如 GNSS-Data`/SCLH_raw.neu`、`SCTQ_raw.neu`）：
   - 第 1 行：`#Reference position  lon  lat  height  STATION`
   - 第 2 行：`# YYYYMMDD YYYY.DECM N(mm) E(mm) U(mm) sig_n(mm) sig_e(mm) sig_u(mm)`
   - 其后为逐行观测数据。
-- 默认从`data/` 下读取原始 `.neu` 文件。
+- 默认从GNSS-Data`/` 下读取原始 `.neu` 文件。
 
 ## 3. 功能概览
 
@@ -35,7 +35,7 @@
 
 ## 4. 输出结果
 
-对每一对台站 `<STA1>_<STA2>`，`GNSS-baseline.py` 会在本目录下 `Out/` 中生成：
+对每一对台站 `<STA1>_<STA2>`，`GNSS-baseline.py` 会在本目录下 GNSS-Out`/` 中生成：
 
 - `STA1_STA2_baseline.txt`：
   - 每行 `YYYY.DECM  baseline(mm)  azimuth(millisecond)`，为扣除初始值后的相对变化量；
@@ -66,4 +66,4 @@ cd fault-movement-anomaly
 python GNSS-baseline.py
 ```
 
-程序会自动从 `data/` 读取同名文件，并将结果写入本目录的 `Out/` 文件夹中。
+程序会自动从 GNSS-Data`/` 读取同名文件，并将结果写入本目录的 GNSS-Out`/` 文件夹中。

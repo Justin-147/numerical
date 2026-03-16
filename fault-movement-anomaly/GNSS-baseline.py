@@ -376,8 +376,8 @@ def process_gnss_to_baseline(data_dir: Path, out_dir: Path, first_file: str, sec
 
 
 def main() -> None:
-    data_dir = Path(__file__).resolve().parent / "data"
-    out_dir = Path(__file__).resolve().parent / "Out"
+    data_dir = Path(__file__).resolve().parent / "GNSS-Data"
+    out_dir = Path(__file__).resolve().parent / "GNSS-Out"
     out_dir.mkdir(exist_ok=True)
 
     # 站对列表，可按需增删；文件名需与 data_dir 下的一致

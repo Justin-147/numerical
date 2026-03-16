@@ -93,13 +93,11 @@
 - **主程序**：`fault-movement-anomaly/GNSS-baseline.py`
 - **说明文档**：`fault-movement-anomaly/GNSS-baseline_README.md`（仅针对该程序，便于后续在本目录下新增其它程序时区分）。
 - **依赖文件**：`fault-movement-anomaly/GNSS-baseline_requirements.txt`，安装方式：
-
   ```bash
   cd fault-movement-anomaly
   pip install -r GNSS-baseline_requirements.txt
   ```
-
-- **功能概览**：读取两站 CENC GNSS `.neu` 数据，按十进制年对齐共同时段，调用与 MATLAB `computeBaseLine.m` 等价的 WGS‑84 椭球算法逐历元计算基线长度与方位角，转为相对变化量并去趋势，输出 `*_baseline.txt` / `*_baseline_detrend.txt` 及对应 PNG 图件。
+- **功能概览**：读取两站 CENC GNSS `.neu` 数据，按十进制年对齐共同时段，调用 WGS‑84 椭球算法逐历元计算基线长度与方位角，转为相对变化量并去趋势，输出 `*_baseline.txt` / `*_baseline_detrend.txt` 及对应 PNG 图件。
 
 ---
 
