@@ -12,7 +12,7 @@
 
 ## 2. 数据说明
 
-- 源数据格式与 `GNSS-Data/` 目录中的 CENC GNSS 文件一致（如 `GNSS-Data/SCLH_raw.neu`、`GNSS-Data/SCTQ_raw.neu`）：
+- 源数据格式与 `GNSS-Data/` 目录中的 CENC GNSS 文件一致（如 `GNSS-Data/YNYA_raw.neu`、`GNSS-Data/XIAG_raw.neu`）：
   - 第 1 行：`#Reference position  lon  lat  height  STATION`
   - 第 2 行：`# YYYYMMDD YYYY.DECM N(mm) E(mm) U(mm) sig_n(mm) sig_e(mm) sig_u(mm)`
   - 其后为逐行观测数据。
@@ -20,7 +20,7 @@
 
 ## 3. 功能概览
 
-对给定的两个 GNSS 台站（如 `SCLH_raw.neu` 与 `SCTQ_raw.neu`）：
+对给定的两个 GNSS 台站（如 `YNYA_raw.neu` 与 `XIAG_raw.neu`）：
 
 1. 读取两站 CENC 格式时序，解析参考经纬度与台站名；
 2. 按十进制年（`YYYY.DECM`）对齐，仅保留共同时间段（对齐前对 DECM 四舍五入到 4 位小数，避免不同文件浮点表示差异导致匹配不全）；
@@ -55,9 +55,10 @@
 
 ```python
 station_pairs = [
-    ("SCLH_raw.neu", "SCTQ_raw.neu"),
-    ("YNYL_raw.neu", "YNYS_raw.neu"),
-    ("GSDX_raw.neu", "NXHY_raw.neu"),
+    ("YNYA_raw.neu", "XIAG_raw.neu"),
+    ("YNGM_raw.neu", "YNRL_raw.neu"),
+    ("SCTQ_raw.neu", "SCMB_raw.neu"),
+    ("YNTH_raw.neu", "YNJP_raw.neu"),
 ]
 ```
 

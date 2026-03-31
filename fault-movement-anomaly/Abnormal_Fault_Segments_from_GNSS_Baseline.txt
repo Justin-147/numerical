@@ -1,0 +1,3 @@
+#fault_id	segment_id	fault_name	segment_name	abnormal_gnss_baseline_pair
+114	11401	楚雄-建水断裂	楚雄断裂带	YNYA-XIAG
+122	12203	程海断裂	南段宾川盆地东缘边界断裂	YNYA-XIAG

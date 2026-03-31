@@ -568,9 +568,10 @@ def main() -> None:
 
     # 站对列表，可按需增删；文件名需与 data_dir 下的一致
     station_pairs: List[Tuple[str, str]] = [
-        ("SCLH_raw.neu", "SCTQ_raw.neu"),
-        ("YNYL_raw.neu", "YNYS_raw.neu"),
-        ("GSDX_raw.neu", "NXHY_raw.neu"),
+        ("YNYA_raw.neu", "XIAG_raw.neu"),
+        ("YNGM_raw.neu", "YNRL_raw.neu"),
+        ("SCTQ_raw.neu", "SCMB_raw.neu"),
+        ("YNTH_raw.neu", "YNJP_raw.neu"),
     ]
 
     print(f"数据目录: {data_dir}")

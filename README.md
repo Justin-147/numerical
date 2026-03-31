@@ -84,20 +84,28 @@
 
 ---
 
-## 构造运动 / GNSS 基线
+## 基于GNSS异常基线、跨断层异常基线等判定异常断层段
 
-### fault-movement-anomaly（GNSS 基线长度与方位角）
+本部分程序均位于 `fault-movement-anomaly/` 目录下。
 
-**基于 CENC GNSS 台站数据的基线长度与方位角分析。**
+### GNSS-baseline.py
 
-- **主程序**：`fault-movement-anomaly/GNSS-baseline.py`
-- **说明文档**：`fault-movement-anomaly/GNSS-baseline_README.md`（仅针对该程序，便于后续在本目录下新增其它程序时区分）。
-- **依赖文件**：`fault-movement-anomaly/GNSS-baseline_requirements.txt`，安装方式：
-  ```bash
-  cd fault-movement-anomaly
-  pip install -r GNSS-baseline_requirements.txt
-  ```
-- **功能概览**：读取两站 CENC GNSS `.neu` 数据，按十进制年对齐共同时段，调用 WGS‑84 椭球算法逐历元计算基线长度与方位角，转为相对变化量并去趋势；同时基于输入文件中的 `sig_n`、`sig_e` 做一阶误差传播，输出 `sigma_baseline(mm)` 与 `sigma_azimuth(millisecond)` 两列。生成 `*_baseline.txt` / `*_baseline_detrend.txt` 及对应 PNG 图件（方位角原始图包含 `Start Azimuth = xxxx.xxxx°` 标注）。
+**GNSS 基线长度与方位角分析。**
+
+- **程序**：`fault-movement-anomaly/GNSS-baseline.py`
+- **说明**：详见 [fault-movement-anomaly/GNSS-baseline_README.md](fault-movement-anomaly/GNSS-baseline_README.md)
+- **依赖**：`fault-movement-anomaly/GNSS-baseline_requirements.txt`
+- **要点**：计算 baseline(mm) 与 azimuth(millisecond) 的相对变化量与去趋势结果，并基于输入文件 `sig_n`、`sig_e` 做一阶误差传播（输出 `sigma_baseline(mm)`、`sigma_azimuth(millisecond)`）；方位角原始图包含 `Start Azimuth = xxxx.xxxx°` 标注。
+
+### GNSS_baseline_fault_segment_intersection.py
+
+**GNSS 异常基线 × 断层段线段相交判定。**
+
+- **程序**：`fault-movement-anomaly/GNSS_baseline_fault_segment_intersection.py`
+- **说明**：详见 [fault-movement-anomaly/GNSS-fault-intersection_README.md](fault-movement-anomaly/GNSS-fault-intersection_README.md)
+- **依赖**：`fault-movement-anomaly/GNSS-fault-intersection_requirements.txt`
+- **输入**：`FaultCord_justExample.xlsx` 与 `GNSS基线异常表-示例.xlsx`（固定表头；文件名在脚本顶部变量中修改）
+- **输出**：`fault-movement-anomaly/Abnormal_Fault_Segments_from_GNSS_Baseline.txt`（同一基线可对应多条断层段，反之亦然；无相交也会生成仅表头文件）
 
 ---
 
@@ -116,11 +124,13 @@
 
 ## 目录结构概览
 
-```
+```text
 numerical/
 ├── README.md                 # 本文件
 ├── extract_columns.py        # 多列提取
-├── fault-movement-anomaly/   # GNSS 基线长度与方位角分析（GNSS-baseline 及后续构造运动相关程序）
+├── fault-movement-anomaly/   # 基于GNSS异常基线、跨断层异常基线等判定异常断层段
+│   ├── GNSS-baseline.py      # GNSS 基线长度与方位角分析
+│   └── GNSS_baseline_fault_segment_intersection.py  # GNSS 异常基线 × 断层段线段相交判定
 ├── R-value/                  # R 值评估
 ├── Molchan-graph/            # Molchan 图评估
 ├── cycle-related-anomaly/     # 破年变异常

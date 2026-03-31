@@ -1,0 +1,5 @@
+# 运行 GNSS_baseline_fault_segment_intersection.py 所需依赖
+numpy
+pandas
+openpyxl
+
