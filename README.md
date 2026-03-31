@@ -97,7 +97,7 @@
   cd fault-movement-anomaly
   pip install -r GNSS-baseline_requirements.txt
   ```
-- **功能概览**：读取两站 CENC GNSS `.neu` 数据，按十进制年对齐共同时段，调用 WGS‑84 椭球算法逐历元计算基线长度与方位角，转为相对变化量并去趋势，输出 `*_baseline.txt` / `*_baseline_detrend.txt` 及对应 PNG 图件。
+- **功能概览**：读取两站 CENC GNSS `.neu` 数据，按十进制年对齐共同时段，调用 WGS‑84 椭球算法逐历元计算基线长度与方位角，转为相对变化量并去趋势；同时基于输入文件中的 `sig_n`、`sig_e` 做一阶误差传播，输出 `sigma_baseline(mm)` 与 `sigma_azimuth(millisecond)` 两列。生成 `*_baseline.txt` / `*_baseline_detrend.txt` 及对应 PNG 图件（方位角原始图包含 `Start Azimuth = xxxx.xxxx°` 标注）。
 
 ---
 

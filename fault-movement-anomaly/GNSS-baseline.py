@@ -19,7 +19,7 @@ GNSS基线长度与方位角的计算与成图流程。
   - 对两者分别做线性拟合并扣除趋势，得到去趋势序列
 - 输出：
   - `<STA1>_<STA2>_baseline.txt`
-  - `<STA1>_<STA2>_baseline_detrend.txt`
+  - `<STA1>_<STA2>_baseline_detrend.txt`（各含 5 列：时间、baseline、azimuth 及由误差传播得到的 sigma）
   - 四幅 PNG 图（原始/去趋势的 baseline 与 azimuth）
 
 使用说明
@@ -226,12 +226,143 @@ def compute_baseline(fai1_deg: float, lamda1_deg: float, fai2_deg: float, lamda2
     return float(S), float(A1), float(A2)
 
 
+def _ne_mm_to_theta_deg(
+    n1_mm: float,
+    e1_mm: float,
+    n2_mm: float,
+    e2_mm: float,
+    lat1_deg: float,
+    lon1_deg: float,
+    lat2_deg: float,
+    lon2_deg: float,
+    ea: float,
+) -> np.ndarray:
+    """由两站 N/E（mm）与参考经纬度得到近似大地经纬度（度），与主循环公式一致。"""
+    b1 = n1_mm / ea / 1000.0 + np.deg2rad(lat1_deg)
+    icb1 = np.round((np.pi / 2 - b1) * 20000.0) / 20000.0
+    l1 = e1_mm / (np.sin(icb1) * ea) / 1000.0 + np.deg2rad(lon1_deg)
+
+    b2 = n2_mm / ea / 1000.0 + np.deg2rad(lat2_deg)
+    icb2 = np.round((np.pi / 2 - b2) * 20000.0) / 20000.0
+    l2 = e2_mm / (np.sin(icb2) * ea) / 1000.0 + np.deg2rad(lon2_deg)
+
+    return np.array(
+        [np.degrees(b1), np.degrees(l1), np.degrees(b2), np.degrees(l2)],
+        dtype=float,
+    )
+
+
+def _jacobian_theta_wrt_ne(
+    n1: float,
+    e1: float,
+    n2: float,
+    e2: float,
+    lat1_deg: float,
+    lon1_deg: float,
+    lat2_deg: float,
+    lon2_deg: float,
+    ea: float,
+    h_mm: float = 1e-3,
+) -> np.ndarray:
+    """∂θ/∂[N1,E1,N2,E2]，θ 为四元大地经纬度（度）；中心差分，列对应 mm。"""
+    x = np.array([n1, e1, n2, e2], dtype=float)
+    jac = np.zeros((4, 4))
+    for j in range(4):
+        xp = x.copy()
+        xm = x.copy()
+        xp[j] += h_mm
+        xm[j] -= h_mm
+        th_p = _ne_mm_to_theta_deg(
+            xp[0], xp[1], xp[2], xp[3], lat1_deg, lon1_deg, lat2_deg, lon2_deg, ea
+        )
+        th_m = _ne_mm_to_theta_deg(
+            xm[0], xm[1], xm[2], xm[3], lat1_deg, lon1_deg, lat2_deg, lon2_deg, ea
+        )
+        jac[:, j] = (th_p - th_m) / (2.0 * h_mm)
+    return jac
+
+
+def _jacobian_sa_wrt_theta(theta_deg: np.ndarray, h_deg: float = 1e-5) -> Tuple[np.ndarray, np.ndarray]:
+    """∂S/∂θ、∂A1/∂θ（中心差分）；θ 分量单位为度。"""
+    grad_s = np.zeros(4)
+    grad_a = np.zeros(4)
+    for i in range(4):
+        tp = theta_deg.copy()
+        tm = theta_deg.copy()
+        tp[i] += h_deg
+        tm[i] -= h_deg
+        sp, ap, _ = compute_baseline(float(tp[0]), float(tp[1]), float(tp[2]), float(tp[3]))
+        sm, am, _ = compute_baseline(float(tm[0]), float(tm[1]), float(tm[2]), float(tm[3]))
+        grad_s[i] = (sp - sm) / (2.0 * h_deg)
+        da = ap - am
+        if da > 180.0:
+            da -= 360.0
+        elif da < -180.0:
+            da += 360.0
+        grad_a[i] = da / (2.0 * h_deg)
+    return grad_s, grad_a
+
+
+def propagate_baseline_azimuth_sigma(
+    n1_mm: float,
+    e1_mm: float,
+    n2_mm: float,
+    e2_mm: float,
+    sig_n1_mm: float,
+    sig_e1_mm: float,
+    sig_n2_mm: float,
+    sig_e2_mm: float,
+    lat1_deg: float,
+    lon1_deg: float,
+    lat2_deg: float,
+    lon2_deg: float,
+    ea: float = 6378137.0,
+) -> Tuple[float, float]:
+    """
+    一阶误差传播：假定各站 N、E 误差独立、方差为 sig_n²、sig_e²（mm²），
+    经 N/E→经纬度→compute_baseline 得到 S(m)、A1(°) 的标准差 σ_S、σ_A1（度）。
+
+    未考虑参考坐标不确定度、垂向 U 与高程影响及历元间相关；U 的 sigma 当前未记入。
+    """
+    if not np.all(np.isfinite([sig_n1_mm, sig_e1_mm, sig_n2_mm, sig_e2_mm])):
+        return float("nan"), float("nan")
+
+    var_x = np.array(
+        [
+            float(sig_n1_mm) ** 2,
+            float(sig_e1_mm) ** 2,
+            float(sig_n2_mm) ** 2,
+            float(sig_e2_mm) ** 2,
+        ]
+    )
+    j_tx = _jacobian_theta_wrt_ne(
+        n1_mm, e1_mm, n2_mm, e2_mm, lat1_deg, lon1_deg, lat2_deg, lon2_deg, ea
+    )
+    sigma_theta = j_tx @ np.diag(var_x) @ j_tx.T
+
+    theta = _ne_mm_to_theta_deg(
+        n1_mm, e1_mm, n2_mm, e2_mm, lat1_deg, lon1_deg, lat2_deg, lon2_deg, ea
+    )
+    g_s, g_a = _jacobian_sa_wrt_theta(theta)
+
+    var_s = float(g_s @ sigma_theta @ g_s)
+    var_a = float(g_a @ sigma_theta @ g_a)
+    sigma_s_m = np.sqrt(max(var_s, 0.0))
+    sigma_a_deg = np.sqrt(max(var_a, 0.0))
+    return sigma_s_m, sigma_a_deg
+
+
 # ===========================
 # 三、单对基线处理
 # ===========================
 
 
-def process_gnss_to_baseline(data_dir: Path, out_dir: Path, first_file: str, second_file: str) -> None:
+def process_gnss_to_baseline(
+    data_dir: Path,
+    out_dir: Path,
+    first_file: str,
+    second_file: str,
+) -> None:
     """
     读取两站 CENC GNSS 数据，计算基线长度与方位角时间序列、去趋势序列并输出。
     """
@@ -250,11 +381,16 @@ def process_gnss_to_baseline(data_dir: Path, out_dir: Path, first_file: str, sec
 
     use1 = st1.data[ind1, 1:4]  # [YYYY.DECM, N, E]
     use2 = st2.data[ind2, 1:4]
+    sig1 = st1.data[ind1, 5:7]  # [sig_n, sig_e] mm
+    sig2 = st2.data[ind2, 5:7]
 
     ea = 6378137.0  # m
-    out_data = np.zeros((use1.shape[0], 3), dtype=float)
-    for i in range(use1.shape[0]):
-        # N/E 为 mm；按 B1/B2 的公式转换到近似纬度/经度并叠加参考坐标
+    n_epochs = use1.shape[0]
+    out_data = np.zeros((n_epochs, 3), dtype=float)
+    sigma_s_m = np.zeros(n_epochs, dtype=float)
+    sigma_a_deg = np.zeros(n_epochs, dtype=float)
+
+    for i in range(n_epochs):
         B1 = use1[i, 1] / ea / 1000.0 + st1.lat * np.pi / 180.0
         ICB1 = np.round((np.pi / 2 - B1) * 20000.0) / 20000.0
         L1 = use1[i, 2] / (np.sin(ICB1) * ea) / 1000.0 + st1.lon * np.pi / 180.0
@@ -264,14 +400,37 @@ def process_gnss_to_baseline(data_dir: Path, out_dir: Path, first_file: str, sec
         L2 = use2[i, 2] / (np.sin(ICB2) * ea) / 1000.0 + st2.lon * np.pi / 180.0
 
         S, A1, _ = compute_baseline(B1 * 180.0 / np.pi, L1 * 180.0 / np.pi, B2 * 180.0 / np.pi, L2 * 180.0 / np.pi)
-        out_data[i, 0] = use1[i, 0]  # YYYY.DECM
+        out_data[i, 0] = use1[i, 0]
         out_data[i, 1] = S
         out_data[i, 2] = A1
 
-    # 相对变化量 + 单位转换
-    outN = out_data.copy()
-    outN[:, 1] = (outN[:, 1] - outN[0, 1]) * 1000.0  # baseline: m -> 相对量 mm
-    outN[:, 2] = (outN[:, 2] - outN[0, 2]) * 3600.0 * 1000.0  # azimuth: 度差 -> 毫秒
+        sm, ad = propagate_baseline_azimuth_sigma(
+            float(use1[i, 1]),
+            float(use1[i, 2]),
+            float(use2[i, 1]),
+            float(use2[i, 2]),
+            float(sig1[i, 0]),
+            float(sig1[i, 1]),
+            float(sig2[i, 0]),
+            float(sig2[i, 1]),
+            st1.lat,
+            st1.lon,
+            st2.lat,
+            st2.lon,
+            ea,
+        )
+        sigma_s_m[i] = sm
+        sigma_a_deg[i] = ad
+
+    # 相对变化量 + 单位转换（与 MATLAB outDataN 对应：均扣除首历元）
+    # 误差输出：为每个历元的绝对不确定度（非差分不确定度），这样首历元也有非零误差
+    ms_per_deg = 3600.0 * 1000.0
+    outN = np.zeros((n_epochs, 5), dtype=float)
+    outN[:, 0] = out_data[:, 0]
+    outN[:, 1] = (out_data[:, 1] - out_data[0, 1]) * 1000.0
+    outN[:, 2] = (out_data[:, 2] - out_data[0, 2]) * ms_per_deg
+    outN[:, 3] = sigma_s_m * 1000.0
+    outN[:, 4] = sigma_a_deg * ms_per_deg
 
     # 去趋势（线性拟合，baseline 与 azimuth 分别做一次）
     outND = outN.copy()
@@ -287,9 +446,15 @@ def process_gnss_to_baseline(data_dir: Path, out_dir: Path, first_file: str, sec
     # 文本输出
     def _write_baseline(path: Path, arr: np.ndarray) -> None:
         with path.open("w", encoding="utf-8") as f:
-            f.write("#YYYY.DECM     baseline(mm)     azimuth(millisecond)\n")
+            f.write(
+                "#YYYY.DECM     baseline(mm)     azimuth(millisecond)     "
+                "sigma_baseline(mm)     sigma_azimuth(millisecond)\n"
+            )
             for row in arr:
-                f.write(f"{row[0]:.4f}     {row[1]:.2f}     {row[2]:.2f}\n")
+                f.write(
+                    f"{row[0]:.4f}     {row[1]:.2f}     {row[2]:.2f}     "
+                    f"{row[3]:.4f}     {row[4]:.4f}\n"
+                )
 
     file_orig = out_dir / f"{base_name}_baseline.txt"
     file_detr = out_dir / f"{base_name}_baseline_detrend.txt"
@@ -299,7 +464,15 @@ def process_gnss_to_baseline(data_dir: Path, out_dir: Path, first_file: str, sec
     print(f"数据输出:\n  {file_orig}\n  {file_detr}")
 
     # 图件输出（仅 PNG）
-    def _plot_series(path_png_base: Path, x: np.ndarray, y: np.ndarray, yl: str, title: str) -> None:
+    def _plot_series(
+        path_png_base: Path,
+        x: np.ndarray,
+        y: np.ndarray,
+        yl: str,
+        title: str,
+        *,
+        annotation: str | None = None,
+    ) -> None:
         fig, ax = plt.subplots(figsize=(3.85, 1.65))
         ax.plot(
             x,
@@ -323,6 +496,18 @@ def process_gnss_to_baseline(data_dir: Path, out_dir: Path, first_file: str, sec
         ax.grid(False)
         # 横纵轴范围由数据自适应；适当增大左/下边距避免标签被裁切
         fig.subplots_adjust(left=0.18, right=0.90, bottom=0.24, top=0.88)
+
+        if annotation:
+            ax.text(
+                0.02,
+                0.96,
+                annotation,
+                transform=ax.transAxes,
+                ha="left",
+                va="top",
+                fontsize=8,
+                fontfamily="Times New Roman",
+            )
 
         # 保存前做一次渲染，检查标题是否超出图框右边界；若超出则逐步减小字号
         fig.canvas.draw()
@@ -353,6 +538,7 @@ def process_gnss_to_baseline(data_dir: Path, out_dir: Path, first_file: str, sec
         outN[:, 2],
         "azimuth/millisecond",
         "Original azimuth time series",
+        annotation=f"Start Azimuth = {out_data[0, 2]:.4f}°",
     )
     _plot_series(
         out_dir / f"{base_name}_baseline_detrend",
