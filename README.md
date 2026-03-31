@@ -107,6 +107,24 @@
 - **输入**：`FaultCord_justExample.xlsx` 与 `GNSS基线异常表-示例.xlsx`（固定表头；文件名在脚本顶部变量中修改）
 - **输出**：`fault-movement-anomaly/Abnormal_Fault_Segments_from_GNSS_Baseline.txt`（同一基线可对应多条断层段，反之亦然；无相交也会生成仅表头文件）
 
+### CrossFault-baseline.py
+
+**跨断层基线或水准差分（不等间隔时间序列）。**
+
+- **程序**：`fault-movement-anomaly/CrossFault-baseline.py`
+- **说明**：详见 [fault-movement-anomaly/CrossFault-baseline_README.md](fault-movement-anomaly/CrossFault-baseline_README.md)
+- **依赖**：`fault-movement-anomaly/CrossFault-baseline_requirements.txt`
+- **输入/输出**：读取 `fault-movement-anomaly/CrossFault-Data/` 下两列数据（yyyymmdd + 数值），按月窗长计算差分，输出 `CrossFault-Out/` 下的差分 txt 与 PNG 图件。
+
+### CrossFault-FaultAnomaly.py
+
+**跨断层异常点 → 异常断层段（点到断层段距离筛选）。**
+
+- **程序**：`fault-movement-anomaly/CrossFault-FaultAnomaly.py`
+- **说明**：详见 [fault-movement-anomaly/CrossFault-FaultAnomaly_README.md](fault-movement-anomaly/CrossFault-FaultAnomaly_README.md)
+- **依赖**：`fault-movement-anomaly/CrossFault-FaultAnomaly_requirements.txt`
+- **输出**：`fault-movement-anomaly/Abnormal_Fault_Segments_from_CrossFault.txt`（无匹配则仅表头）
+
 ---
 
 ## 依赖与运行方式
@@ -130,7 +148,9 @@ numerical/
 ├── extract_columns.py        # 多列提取
 ├── fault-movement-anomaly/   # 基于GNSS异常基线、跨断层异常基线等判定异常断层段
 │   ├── GNSS-baseline.py      # GNSS 基线长度与方位角分析
-│   └── GNSS_baseline_fault_segment_intersection.py  # GNSS 异常基线 × 断层段线段相交判定
+│   ├── GNSS_baseline_fault_segment_intersection.py  # GNSS 异常基线 × 断层段线段相交判定
+│   ├── CrossFault-baseline.py  # 跨断层基线或水准差分（不等间隔时间序列）
+│   └── CrossFault-FaultAnomaly.py  # 跨断层异常点 → 异常断层段
 ├── R-value/                  # R 值评估
 ├── Molchan-graph/            # Molchan 图评估
 ├── cycle-related-anomaly/     # 破年变异常

@@ -1,0 +1,5 @@
+# 运行 CrossFault-FaultAnomaly.py 所需依赖
+numpy
+pandas
+openpyxl
+

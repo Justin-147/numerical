@@ -1,0 +1,2 @@
+#fault_id	segment_id	fault_name	segment_name	abnormal_site	abnormal_item	lon_site	lat_site
+114	11402	楚雄-建水断裂	楚雄-南华断裂	楚雄	基1-基2	101.50	25.02
