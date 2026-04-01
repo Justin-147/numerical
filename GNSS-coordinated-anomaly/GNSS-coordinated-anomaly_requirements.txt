@@ -1,0 +1,5 @@
+# GNSS-coordinated-anomaly：filt / space / time 共用依赖
+# matplotlib 用于 filt 与 time 的 PNG 输出，以及 space 的格网图
+numpy
+scipy
+matplotlib

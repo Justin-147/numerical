@@ -14,6 +14,66 @@
 - **用途**：常与 `cycle-related-anomaly`、`trend-related-anomaly` 等输出的多列结果配合，抽取“时间 + 某特征列”供 R 值/Molchan 等程序使用。
 - **运行**：修改文件内 `INPUT_FILE`、`OUTPUT_FILE`、`COLUMNS`、`HAS_HEADER`、`OUTPUT_HEADER` 等参数后执行 `python extract_columns.py`。
 
+### GNSS-ForamtTrans.py
+
+**GNSS 数据格式转换（LXX 解算 → CENC 样式 `.neu`）。** 将 `LXXdata/` 目录下的 `.NEU` 文件转换为与 `GNSS-coordinated-anomaly/DataIn/SCTQ_raw.neu` 相同的输出格式，便于后续 GNSS 异常程序统一读取。
+
+- **输入**：
+  - `LXXdata/*.NEU`：每行 9 列（`YYYY.DECM`、`N/E/U(m)`、`sig_n/sig_e/sig_u(m)`、`YYYY`、`DOY`）。
+  - `LXXdata/gps_station.dat`：3 列（经度、纬度、站点名），按站点名（如 `LS01`）匹配经纬度；高程固定写 0。
+- **输出**：写入 `GNSS-coordinated-anomaly/DataIn/`，文件名规则为 `<站点>_raw.neu`（如 `LS01.NEU` → `LS01_raw.neu`），并将 N/E/U 与 sigma 从 m 转换为 mm，同时由 `YYYY + DOY` 生成 `YYYYMMDD`；输出的 `YYYY.DECM` 会按“该日中午 12 点 + 闰年/平年”重新计算（与 `SCTQ_raw.neu` 对齐）。
+- **运行**：
+  ```bash
+  # 转换全部站点
+  python GNSS-ForamtTrans.py --lxx-dir LXXdata --out-dir GNSS-coordinated-anomaly/DataIn
+
+  # 仅转换指定站点（逗号分隔）
+  python GNSS-ForamtTrans.py --lxx-dir LXXdata --out-dir GNSS-coordinated-anomaly/DataIn --stations LS01,LS02
+  ```
+- **时间范围截取（可选）**：
+  - 默认时间范围由脚本内 `DEFAULT_START_DATE` / `DEFAULT_END_DATE` 控制（不想每次命令行传参就改脚本这两行）。
+  - 也可用命令行覆盖，例如：
+  ```bash
+  python GNSS-ForamtTrans.py --start-date 20110101 --end-date 20161231
+  ```
+
+### cut_datain_by_date.py
+
+**批量按日期截取 `*_raw.neu`。** 面向 `GNSS-coordinated-anomaly/DataIn/`（或其它目录）下的 CENC 样式逐日 NEU 文件，按 `YYYYMMDD` 保留指定闭区间内的数据行。
+
+- **行为**：对每个匹配文件，先将原文件重命名为 `<原文件名>.allbak`（若备份已存在则报错退出，避免覆盖），再以原文件名写出截取后的新文件（保留以 `#` 开头的表头行）。
+- **默认**：日期范围 `20130101`～`20141231`（含）；数据目录 `GNSS-coordinated-anomaly/DataIn`；匹配 `*_raw.neu`。
+- **运行**：
+
+  ```bash
+  python cut_datain_by_date.py
+
+  python cut_datain_by_date.py --start 20110101 --end 20161231
+
+  python cut_datain_by_date.py --data-dir GNSS-coordinated-anomaly/DataIn --glob "*_raw.neu"
+  ```
+
+---
+
+## GNSS 协调方向异常（HHT 频带滤波 + 空间格网 + 站点对时间相关）
+
+该流程位于 `GNSS-coordinated-anomaly/` 目录下，主要包含三个脚本：
+
+- **时间滤波**：`GNSS-coordinated-anomaly/GNSS-coordinated-anomaly-filt.py`
+  - **输入**：`GNSS-coordinated-anomaly/DataIn/*_raw.neu`
+  - **输出**：`GNSS-coordinated-anomaly/FiltDataOut/`
+    - `<SITE>_HHTfilt.txt`（`YYYYMMDD YYYY.DECM N_filt(mm) E_filt(mm) U_filt(mm) Azimuth(deg)`）
+    - `stinfo.txt`（`site lat lon`）
+    - （默认开启）`<SITE>_HHTfilt.png`：N/E/U 滤波时间序列三子图；脚本顶部 `DEFAULT_ENABLE_PLOT` 控制默认行为，命令行可用 `--no-plot` 关闭
+- **空间格网 + 绘图**：`GNSS-coordinated-anomaly/GNSS-coordinated-anomaly-space.py`
+  - **输入**：`FiltDataOut/` 下的 `stinfo.txt` 与 `*_HHTfilt.txt`
+  - **特点**：支持 `--date-start/--date-end` 指定时间范围，或 `--dates` 指定个别日期点；格网统计与 PNG 等输出目录由脚本内默认配置（如 `Frames/`）决定
+- **站点对滑动相关系数**：`GNSS-coordinated-anomaly/GNSS-coordinated-anomaly-time.py`
+  - **输入**：`FiltDataOut/*_HHTfilt.txt`
+  - **输出**：`GNSS-coordinated-anomaly/TimeCorrelationOut/` 下 `<站1>-<站2>-TimeCorrelation.txt`（及默认开启时的同名 `.png`）；站点对、窗长、步长等可在脚本顶部默认配置，也可命令行传参
+
+依赖安装：在 `GNSS-coordinated-anomaly/` 目录执行 `pip install -r GNSS-coordinated-anomaly_requirements.txt`（含 `numpy`、`scipy`、`matplotlib`）。更详细说明见 [GNSS-coordinated-anomaly/GNSS-coordinated-anomaly_README.md](GNSS-coordinated-anomaly/GNSS-coordinated-anomaly_README.md)。
+
 ---
 
 ## 异常识别与特征提取
@@ -146,6 +206,12 @@
 numerical/
 ├── README.md                 # 本文件
 ├── extract_columns.py        # 多列提取
+├── GNSS-ForamtTrans.py       # LXX 解算 NEU → CENC 样式 *_raw.neu
+├── cut_datain_by_date.py     # 批量按日期截取 *_raw.neu（备份 .allbak）
+├── GNSS-coordinated-anomaly/
+│   ├── GNSS-coordinated-anomaly-filt.py   # HHT 频带滤波，输出 FiltDataOut
+│   ├── GNSS-coordinated-anomaly-space.py  # 空间格网统计与绘图（Frames 等）
+│   └── GNSS-coordinated-anomaly-time.py   # 站点对滑动相关系数（TimeCorrelationOut）
 ├── fault-movement-anomaly/   # 基于GNSS异常基线、跨断层异常基线等判定异常断层段
 │   ├── GNSS-baseline.py      # GNSS 基线长度与方位角分析
 │   ├── GNSS_baseline_fault_segment_intersection.py  # GNSS 异常基线 × 断层段线段相交判定
