@@ -8,7 +8,7 @@
   - 先把原文件重命名为 <原文件名>.allbak（若已存在则报错退出，避免覆盖）
   - 再用原文件名写出“截取后的新文件”（保留原表头行）
 
-默认日期范围：20130101 ~ 20141231（含）
+默认日期范围：20120401 ~ 20130430（含）
 
 用法：
   python GNSS-coordinated-anomaly/cut_datain_by_date.py
@@ -89,8 +89,8 @@ def main() -> None:
     p = argparse.ArgumentParser(description="按日期范围截取 DataIn *_raw.neu，并备份为 .allbak")
     p.add_argument("--data-dir", default=os.path.join("GNSS-coordinated-anomaly", "DataIn"), help="输入目录")
     p.add_argument("--glob", dest="glob_pattern", default="*_raw.neu", help="文件匹配模式（默认 *_raw.neu）")
-    p.add_argument("--start", type=int, default=20130101, help="起始日期 YYYYMMDD（含）")
-    p.add_argument("--end", type=int, default=20141231, help="结束日期 YYYYMMDD（含）")
+    p.add_argument("--start", type=int, default=20120401, help="起始日期 YYYYMMDD（含）")
+    p.add_argument("--end", type=int, default=20130430, help="结束日期 YYYYMMDD（含）")
     args = p.parse_args()
 
     if args.start > args.end:

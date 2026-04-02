@@ -5,7 +5,7 @@ GNSS 协调方向异常：空间格网统计 + 绘图
 
 输入（来自 GNSS-coordinated-anomaly-filt.py 的输出）：
 - FiltDataOut/stinfo.txt
-- FiltDataOut/*_HHTfilt.txt
+- FiltDataOut/*_HHTfilt.txt 或 *_Bandfilt.txt（与 filt 的 --filter-mode 一致）
 
 支持按时间范围或指定日期计算/出图：
 - --date-start YYYYMMDD --date-end YYYYMMDD
@@ -27,28 +27,13 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 
-def _angdiff_cmap():
-    # 目标：0 红；20 左右拉到黄；随后过渡到青/蓝；120 深蓝
-    from matplotlib.colors import LinearSegmentedColormap
-
-    vmax = float(DEFAULT_ANGDIFF_VMAX)
-    p20 = max(0.0, min(1.0, 20.0 / vmax if vmax > 0 else 0.1666667))
-    p60 = max(p20, min(1.0, 60.0 / vmax if vmax > 0 else 0.5))
-    return LinearSegmentedColormap.from_list(
-        "angdiff_ref",
-        [
-            (0.0, (1.0, 0.0, 0.0)),  # red
-            (p20, (1.0, 1.0, 0.0)),  # yellow around 20 deg
-            (p60, (0.0, 1.0, 1.0)),  # cyan
-            (1.0, (0.0, 0.0, 1.0)),  # blue
-        ],
-    )
-
-
 DEFAULT_OUT_PATH = os.path.join("GNSS-coordinated-anomaly", "FiltDataOut")
 DEFAULT_FRAMES_OUT = os.path.join("GNSS-coordinated-anomaly", "Frames")
 # 不带参数运行时的默认行为：完整执行 grid + plot
 DEFAULT_RUN_WHEN_NO_ARGS = "pipeline"  # "grid" | "plot" | "pipeline"
+
+# 生成模式：all 先 hht 后 bandpass；hht/bandpass 则只生成对应一套
+DEFAULT_GEN_MODE = "all"  # "all" | "hht" | "bandpass"
 
 # 默认时间选择（命令行不传时生效）
 # - 若 DEFAULT_DATES 非空：优先按指定日期点计算/出图
@@ -79,6 +64,55 @@ DEFAULT_SEARCH_RADIUS_KM = 50.0
 DEFAULT_MIN_STATIONS = 3
 
 
+def _angdiff_cmap():
+    # 参考色标（值, R, G, B）：
+    # 0   255 0   0
+    # 20  255 255 0
+    # 40  71  254 218
+    # 60  0   213 254
+    # 80  0   101 254
+    # 100 0   0   242
+    # 120 0   0   137
+    from matplotlib.colors import LinearSegmentedColormap
+
+    vmax = float(DEFAULT_ANGDIFF_VMAX)
+    if not np.isfinite(vmax) or vmax <= 0:
+        vmax = 120.0
+
+    anchors = [
+        (0.0, (255, 0, 0)),
+        (20.0, (255, 255, 0)),
+        (40.0, (71, 254, 218)),
+        (60.0, (0, 213, 254)),
+        (80.0, (0, 101, 254)),
+        (100.0, (0, 0, 242)),
+        (120.0, (0, 0, 137)),
+    ]
+    stops = []
+    for v, (r, g, b) in anchors:
+        p = max(0.0, min(1.0, float(v) / vmax))
+        stops.append((p, (float(r) / 255.0, float(g) / 255.0, float(b) / 255.0)))
+    return LinearSegmentedColormap.from_list("angdiff_ref", stops)
+
+
+def _list_station_filt_txt_files(out_path: str, tag: str) -> List[str]:
+    return sorted(glob.glob(os.path.join(out_path, f"*_{tag}.txt")))
+
+
+def _station_filt_txt_path(out_path: str, site_id: str, tag: str) -> Optional[str]:
+    p = os.path.join(out_path, f"{site_id}_{tag}.txt")
+    return p if os.path.isfile(p) else None
+
+
+def _mode_to_tag(mode: str) -> str:
+    m = str(mode).strip().lower()
+    if m == "hht":
+        return "HHTfilt"
+    if m == "bandpass":
+        return "Bandfilt"
+    raise ValueError(f"未知模式：{mode}（应为 hht/bandpass）")
+
+
 def load_stinfo(out_path: str) -> np.ndarray:
     p = os.path.join(out_path, "stinfo.txt")
     rows: List[Tuple[float, float, str]] = []
@@ -104,7 +138,7 @@ def load_stinfo(out_path: str) -> np.ndarray:
 
 def load_station_hhtfilt(path: str) -> Dict[str, np.ndarray]:
     """
-    读取 <site>_HHTfilt.txt
+    读取 <site>_HHTfilt.txt 或 <site>_Bandfilt.txt
     列：YYYYMMDD, YYYY.DECM, N/E/U_filt(mm), Azimuth(deg)
     返回：days(int), decm(float), NS/EW/ZZ(m), AA(deg)
     """
@@ -120,6 +154,29 @@ def load_station_hhtfilt(path: str) -> Dict[str, np.ndarray]:
     zz_m = (data[:, 4] / 1000.0).astype(np.float64)
     aa = data[:, 5].astype(np.float64)
     return {"days": days, "decm": decm, "NS_ll": ns_m, "EW_ll": ew_m, "ZZ_ll": zz_m, "AA": aa}
+
+
+def _take_series_by_days(days: np.ndarray, values: np.ndarray, sel_days: np.ndarray) -> np.ndarray:
+    """
+    将某站点的逐日序列按 sel_days 对齐取值。
+    若某天不存在则填 NaN（避免不同站点长度/起止日期不一致导致越界）。
+    """
+    days = np.asarray(days, dtype=np.int64).ravel()
+    values = np.asarray(values, dtype=np.float64).ravel()
+    sel_days = np.asarray(sel_days, dtype=np.int64).ravel()
+    out = np.full(sel_days.size, np.nan, dtype=np.float64)
+    if days.size == 0 or values.size == 0 or sel_days.size == 0:
+        return out
+    # days 必须升序（本项目写出的逐日序列满足）
+    idx = np.searchsorted(days, sel_days)
+    ok = (idx >= 0) & (idx < days.size)
+    if np.any(ok):
+        idx2 = idx[ok]
+        ok2 = days[idx2] == sel_days[ok]
+        if np.any(ok2):
+            out_idx = np.flatnonzero(ok)[ok2]
+            out[out_idx] = values[idx2[ok2]]
+    return out
 
 
 def angular_diff_deg(a1: float, a2: float) -> float:
@@ -211,16 +268,18 @@ def _select_day_indices(ref_days: np.ndarray, args: argparse.Namespace) -> np.nd
     return np.arange(ref_days.size, dtype=np.int32)
 
 
-def run_grid(args: argparse.Namespace) -> None:
+def _run_grid_one(args: argparse.Namespace, mode: str) -> None:
     lo = load_stinfo(args.out_path)
-    cand = sorted(glob.glob(os.path.join(args.out_path, "*_HHTfilt.txt")))
+    tag = _mode_to_tag(mode)
+    cand = _list_station_filt_txt_files(args.out_path, tag)
     if not cand:
-        raise FileNotFoundError("未找到 *_HHTfilt.txt，请先运行 filt(stations)")
+        raise FileNotFoundError(f"未找到 *_{tag}.txt，请先运行 filt（mode={mode}）")
     ref = load_station_hhtfilt(cand[0])
     ref_days = ref["days"]
     sel_idx = _select_day_indices(ref_days, args)
     if sel_idx.size == 0:
         raise ValueError("选择的日期为空（可能超出站点文件日期范围）")
+    sel_days = ref_days[sel_idx]
     doy = int(sel_idx.size)
 
     lat_min, lat_max, lon_min, lon_max = _resolve_bounds_from_stations(
@@ -252,12 +311,12 @@ def run_grid(args: argparse.Namespace) -> None:
             ang_list: List[np.ndarray] = []
             for idx in st:
                 sid = str(lo[idx, 2])
-                fp = os.path.join(args.out_path, f"{sid}_HHTfilt.txt")
-                if not os.path.isfile(fp):
+                fp = _station_filt_txt_path(args.out_path, sid, tag)
+                if not fp:
                     continue
                 z = load_station_hhtfilt(fp)
-                ew_ll = z["EW_ll"][sel_idx]
-                ns_ll = z["NS_ll"][sel_idx]
+                ew_ll = _take_series_by_days(z["days"], z["EW_ll"], sel_days)
+                ns_ll = _take_series_by_days(z["days"], z["NS_ll"], sel_days)
                 aa = np.degrees(np.arctan2(ew_ll, ns_ll))
                 aa = np.where(aa < 0, aa + 360.0, aa)
                 ang_list.append(aa)
@@ -278,7 +337,7 @@ def run_grid(args: argparse.Namespace) -> None:
                     angdiff_mean[li, oi, day] = float(dds / stnn)
 
     os.makedirs(args.frames_out, exist_ok=True)
-    out_ad = os.path.join(args.frames_out, "ANGDIFF_MEAN.txt")
+    out_ad = os.path.join(args.frames_out, f"ANGDIFF_MEAN_{str(mode).strip().lower()}.txt")
     # 写出每个格点每一天的角差平均：YYYYMMDD lon lat angdiff_deg
     # 只写非 NaN 行，避免文件过大
     with open(out_ad, "w", encoding="utf-8", newline="\n") as f:
@@ -288,19 +347,27 @@ def run_grid(args: argparse.Namespace) -> None:
             ii, jj = np.where(np.isfinite(a))
             for i0, j0 in zip(ii.tolist(), jj.tolist()):
                 f.write(
-                    f"{int(ref_days[sel_idx[di]])}\t{float(lons[j0]):.6f}\t{float(lats[i0]):.6f}\t{float(a[i0, j0]):.10g}\n"
+                    f"{int(sel_days[di])}\t{float(lons[j0]):.6f}\t{float(lats[i0]):.6f}\t{float(a[i0, j0]):.10g}\n"
                 )
-    print(f"格网完成：doy={doy}（选中日期数），ANGDIFF_MEAN 已写入 {out_ad}")
+    print(f"格网完成：mode={mode}, doy={doy}（选中日期数），ANGDIFF_MEAN 已写入 {out_ad}")
 
 
-def run_plot(args: argparse.Namespace) -> None:
+def run_grid(args: argparse.Namespace) -> None:
+    m = str(getattr(args, "gen_mode", "all")).strip().lower()
+    modes = ["hht", "bandpass"] if m == "all" else [m]
+    for mm in modes:
+        _run_grid_one(args, mm)
+
+
+def _run_plot_one(args: argparse.Namespace, mode: str) -> None:
     # 目前 plot 复用 grid 的计算（按选中日期子集），逐日输出 PNG
     os.makedirs(args.frames_out, exist_ok=True)
 
     # 先拿参考日期序列与索引
-    cand = sorted(glob.glob(os.path.join(args.out_path, "*_HHTfilt.txt")))
+    tag = _mode_to_tag(mode)
+    cand = _list_station_filt_txt_files(args.out_path, tag)
     if not cand:
-        raise FileNotFoundError("未找到 *_HHTfilt.txt，请先运行 filt(stations)")
+        raise FileNotFoundError(f"未找到 *_{tag}.txt，请先运行 filt（mode={mode}）")
     ref = load_station_hhtfilt(cand[0])
     ref_days = ref["days"]
     sel_idx = _select_day_indices(ref_days, args)
@@ -341,12 +408,12 @@ def run_plot(args: argparse.Namespace) -> None:
             ang_list: List[np.ndarray] = []
             for idx in st:
                 sid = str(lo[idx, 2])
-                fp = os.path.join(args.out_path, f"{sid}_HHTfilt.txt")
-                if not os.path.isfile(fp):
+                fp = _station_filt_txt_path(args.out_path, sid, tag)
+                if not fp:
                     continue
                 z = load_station_hhtfilt(fp)
-                ew_ll = z["EW_ll"][sel_idx]
-                ns_ll = z["NS_ll"][sel_idx]
+                ew_ll = _take_series_by_days(z["days"], z["EW_ll"], sel_days)
+                ns_ll = _take_series_by_days(z["days"], z["NS_ll"], sel_days)
                 aa = np.degrees(np.arctan2(ew_ll, ns_ll))
                 aa = np.where(aa < 0, aa + 360.0, aa)
                 ang_list.append(aa)
@@ -441,7 +508,7 @@ def run_plot(args: argparse.Namespace) -> None:
     for i, ymd in enumerate(sel_days):
         day_label = str(int(ymd))
         if args.make_gps_index:
-            out_png = os.path.join(args.frames_out, f"GNSS-coordinated-anomaly-{day_label}.png")
+            out_png = os.path.join(args.frames_out, f"GNSS-coordinated-anomaly-{str(mode).strip().lower()}-{day_label}.png")
             # 站点箭头：直接取每站该天的 (E,N) 滤波值
             st_lats = []
             st_lons = []
@@ -449,14 +516,12 @@ def run_plot(args: argparse.Namespace) -> None:
             st_v = []  # North
             for row in lo:
                 sid = str(row[2])
-                fp = os.path.join(args.out_path, f"{sid}_HHTfilt.txt")
-                if not os.path.isfile(fp):
+                fp = _station_filt_txt_path(args.out_path, sid, tag)
+                if not fp:
                     continue
                 z = load_station_hhtfilt(fp)
-                if sel_idx[i] >= z["EW_ll"].shape[0]:
-                    continue
-                e0 = float(z["EW_ll"][sel_idx[i]])
-                n0 = float(z["NS_ll"][sel_idx[i]])
+                e0 = float(_take_series_by_days(z["days"], z["EW_ll"], np.array([int(ymd)], dtype=np.int64))[0])
+                n0 = float(_take_series_by_days(z["days"], z["NS_ll"], np.array([int(ymd)], dtype=np.int64))[0])
                 if not (np.isfinite(e0) and np.isfinite(n0)):
                     continue
                 st_lats.append(float(row[0]))
@@ -477,7 +542,14 @@ def run_plot(args: argparse.Namespace) -> None:
                 vmax=float(args.angdiff_vmax),
             )
 
-    print(f"绘图完成：输出到 {args.frames_out}（帧数 {len(sel_days)}）")
+    print(f"绘图完成：mode={mode}, 输出到 {args.frames_out}（帧数 {len(sel_days)}）")
+
+
+def run_plot(args: argparse.Namespace) -> None:
+    m = str(getattr(args, "gen_mode", "all")).strip().lower()
+    modes = ["hht", "bandpass"] if m == "all" else [m]
+    for mm in modes:
+        _run_plot_one(args, mm)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -504,9 +576,19 @@ def build_parser() -> argparse.ArgumentParser:
             help=f"指定日期列表（优先级最高）：YYYYMMDD,YYYYMMDD,... 或 [..]；默认 {DEFAULT_DATES}",
         )
 
-    pg = sub.add_parser("grid", help="读取 stinfo + *_HHTfilt.txt 计算格网统计")
+    def add_gen_mode_args(pp: argparse.ArgumentParser) -> None:
+        pp.add_argument(
+            "--gen-mode",
+            type=str,
+            default=DEFAULT_GEN_MODE,
+            choices=["all", "hht", "bandpass"],
+            help="生成模式：hht 只用 *_HHTfilt；bandpass 只用 *_Bandfilt；all 依次生成两套（默认 all）",
+        )
+
+    pg = sub.add_parser("grid", help="读取 stinfo + *_HHTfilt.txt / *_Bandfilt.txt 计算格网统计")
     pg.add_argument("--out-path", default=DEFAULT_OUT_PATH)
     pg.add_argument("--frames-out", default=DEFAULT_FRAMES_OUT, help="数据/图件输出目录（默认 Frames）")
+    add_gen_mode_args(pg)
     add_time_args(pg)
     pg.add_argument("--grid-step", type=float, default=DEFAULT_GRID_STEP_DEG, help="格网步长(度)")
     pg.add_argument("--search-radius-km", type=float, default=DEFAULT_SEARCH_RADIUS_KM, help="搜索半径(km)")
@@ -525,6 +607,7 @@ def build_parser() -> argparse.ArgumentParser:
     pp = sub.add_parser("plot", help="基于格网统计结果逐日绘图")
     pp.add_argument("--out-path", default=DEFAULT_OUT_PATH)
     pp.add_argument("--frames-out", default=DEFAULT_FRAMES_OUT)
+    add_gen_mode_args(pp)
     add_time_args(pp)
     pp.add_argument("--make-gps-index", action="store_true", default=True)
     pp.add_argument("--station-arrow-scale", type=float, default=0.002, help="站点箭头缩放（越小箭头越长；单位按 m）")
@@ -554,6 +637,7 @@ def main() -> None:
         base = dict(
             out_path=DEFAULT_OUT_PATH,
             frames_out=DEFAULT_FRAMES_OUT,
+            gen_mode=DEFAULT_GEN_MODE,
             date_start=None,
             date_end=None,
             dates=None,

@@ -4,7 +4,7 @@
 GNSS 协调方向异常：时间相关（站点对滑动相关系数）
 
 输入（来自 GNSS-coordinated-anomaly-filt.py 的输出）：
-- FiltDataOut/*_HHTfilt.txt
+- FiltDataOut/*_HHTfilt.txt 或 *_Bandfilt.txt
 
 功能：
 - 给定站点对（例如 LS06 LS07），在给定窗长/步长下，计算站点对间 N/E/U 的滑动 Pearson 相关系数序列
@@ -36,6 +36,9 @@ DEFAULT_STEP_DAYS = 1 # 滑动步长（天）
 # 是否在写出 txt 后绘制 N/E/U 相关系数时间序列（上中下三子图），输出同名 .png
 DEFAULT_ENABLE_PLOT = True # 是否绘图
 
+# 生成模式：all 先 hht 后 bandpass；hht/bandpass 则只生成对应一套
+DEFAULT_GEN_MODE = "all"  # "all" | "hht" | "bandpass"
+
 # 站点对列表：每项为 (站点1, 站点2)，输出文件名 <站1>-<站2>-TimeCorrelation.txt
 DEFAULT_SITE_PAIRS: List[Tuple[str, str]] = [
     ("LS06", "LS07"),
@@ -44,10 +47,20 @@ DEFAULT_SITE_PAIRS: List[Tuple[str, str]] = [
 # ===========================================================================
 
 
-def _load_hhtfilt(site: str, in_path: str) -> Dict[str, np.ndarray]:
-    fp = os.path.join(in_path, f"{site}_HHTfilt.txt")
+def _mode_to_tag(mode: str) -> str:
+    m = str(mode).strip().lower()
+    if m == "hht":
+        return "HHTfilt"
+    if m == "bandpass":
+        return "Bandfilt"
+    raise ValueError(f"未知模式：{mode}（应为 hht/bandpass）")
+
+
+def _load_filt(site: str, in_path: str, *, mode: str) -> Dict[str, np.ndarray]:
+    tag = _mode_to_tag(mode)
+    fp = os.path.join(in_path, f"{site}_{tag}.txt")
     if not os.path.isfile(fp):
-        raise FileNotFoundError(f"未找到站点文件：{fp}")
+        raise FileNotFoundError(f"未找到 {site}_{tag}.txt（目录 {in_path}，mode={mode}）")
     data = np.loadtxt(fp, delimiter="\t", comments="#")
     if data.ndim == 1:
         data = data.reshape(1, -1)
@@ -98,6 +111,7 @@ def _plot_correlation_series(
     e_corr: np.ndarray,
     u_corr: np.ndarray,
     window_days: int,
+    mode: str,
 ) -> None:
     from datetime import datetime
 
@@ -115,7 +129,7 @@ def _plot_correlation_series(
         ax.axhline(0.0, color="gray", lw=0.6, ls="--")
         ax.set_ylabel(lab)
         ax.set_ylim(-1.05, 1.05)
-    axes[0].set_title(f"{site1}-{site2} sliding Pearson r (window={window_days} d, end date)")
+    axes[0].set_title(f"{site1}-{site2} sliding Pearson r ({str(mode).strip().lower()}, window={window_days} d, end date)")
     axes[-1].set_xlabel("Date (window end)")
     axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
     fig.autofmt_xdate()
@@ -133,9 +147,10 @@ def run_one_pair(
     window_days: int,
     step_days: int,
     enable_plot: bool,
+    mode: str,
 ) -> Tuple[str, str | None]:
-    a = _load_hhtfilt(site1, in_path)
-    b = _load_hhtfilt(site2, in_path)
+    a = _load_filt(site1, in_path, mode=mode)
+    b = _load_filt(site2, in_path, mode=mode)
     days, aa, bb = _align_by_days(a, b)
 
     if window_days <= 1:
@@ -146,7 +161,7 @@ def run_one_pair(
         raise ValueError(f"{site1}-{site2} 共同日期数不足：{days.size} < window_days({window_days})")
 
     os.makedirs(out_dir, exist_ok=True)
-    out_fp = os.path.join(out_dir, f"{site1}-{site2}-TimeCorrelation.txt")
+    out_fp = os.path.join(out_dir, f"{site1}-{site2}-TimeCorrelation-{str(mode).strip().lower()}.txt")
 
     ymds: List[int] = []
     n_list: List[float] = []
@@ -170,7 +185,7 @@ def run_one_pair(
 
     out_png: str | None = None
     if enable_plot and ymds:
-        out_png = os.path.join(out_dir, f"{site1}-{site2}-TimeCorrelation.png")
+        out_png = os.path.join(out_dir, f"{site1}-{site2}-TimeCorrelation-{str(mode).strip().lower()}.png")
         _plot_correlation_series(
             out_png,
             site1,
@@ -180,6 +195,7 @@ def run_one_pair(
             np.asarray(e_list, dtype=np.float64),
             np.asarray(u_list, dtype=np.float64),
             window_days,
+            mode,
         )
 
     return out_fp, out_png
@@ -191,10 +207,17 @@ def build_parser() -> argparse.ArgumentParser:
         description="站点对滑动相关系数（N/E/U）",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--in-path", default=DEFAULT_IN_PATH, help="滤波输出目录（包含 *_HHTfilt.txt）")
+    p.add_argument("--in-path", default=DEFAULT_IN_PATH, help="滤波输出目录（含 *_HHTfilt.txt 或 *_Bandfilt.txt）")
     p.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help="输出目录")
     p.add_argument("--window-days", type=int, default=DEFAULT_WINDOW_DAYS, help="窗长（天）")
     p.add_argument("--step-days", type=int, default=DEFAULT_STEP_DAYS, help="滑动步长（天）")
+    p.add_argument(
+        "--gen-mode",
+        type=str,
+        default=DEFAULT_GEN_MODE,
+        choices=["all", "hht", "bandpass"],
+        help="生成模式：hht 只用 *_HHTfilt；bandpass 只用 *_Bandfilt；all 依次生成两套（默认 all）",
+    )
     p.add_argument(
         "--pair",
         nargs=2,
@@ -222,20 +245,29 @@ def main(argv: List[str] | None = None) -> int:
 
     enable_plot = bool(DEFAULT_ENABLE_PLOT) and not bool(args.no_plot)
 
+    m = str(getattr(args, "gen_mode", DEFAULT_GEN_MODE)).strip().lower()
+    modes = ["hht", "bandpass"] if m == "all" else [m]
+
     for s1, s2 in pairs:
-        out_fp, out_png = run_one_pair(
-            s1,
-            s2,
-            in_path=str(args.in_path),
-            out_dir=str(args.out_dir),
-            window_days=int(args.window_days),
-            step_days=int(args.step_days),
-            enable_plot=enable_plot,
-        )
-        msg = f"{s1}-{s2}: {out_fp}"
-        if out_png:
-            msg += f" | {out_png}"
-        print(msg)
+        for mm in modes:
+            try:
+                out_fp, out_png = run_one_pair(
+                    s1,
+                    s2,
+                    in_path=str(args.in_path),
+                    out_dir=str(args.out_dir),
+                    window_days=int(args.window_days),
+                    step_days=int(args.step_days),
+                    enable_plot=enable_plot,
+                    mode=str(mm),
+                )
+            except FileNotFoundError as e:
+                print(f"{s1}-{s2} ({mm}): 跳过（{e}）")
+                continue
+            msg = f"{s1}-{s2} ({mm}): {out_fp}"
+            if out_png:
+                msg += f" | {out_png}"
+            print(msg)
     return 0
 
 

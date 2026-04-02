@@ -44,7 +44,6 @@
 - **行为**：对每个匹配文件，先将原文件重命名为 `<原文件名>.allbak`（若备份已存在则报错退出，避免覆盖），再以原文件名写出截取后的新文件（保留以 `#` 开头的表头行）。
 - **默认**：日期范围 `20130101`～`20141231`（含）；数据目录 `GNSS-coordinated-anomaly/DataIn`；匹配 `*_raw.neu`。
 - **运行**：
-
   ```bash
   python cut_datain_by_date.py
 
@@ -55,22 +54,24 @@
 
 ---
 
-## GNSS 协调方向异常（HHT 频带滤波 + 空间格网 + 站点对时间相关）
+## GNSS 协调方向异常（频带滤波 + 空间格网 + 站点对时间相关）
 
 该流程位于 `GNSS-coordinated-anomaly/` 目录下，主要包含三个脚本：
 
 - **时间滤波**：`GNSS-coordinated-anomaly/GNSS-coordinated-anomaly-filt.py`
   - **输入**：`GNSS-coordinated-anomaly/DataIn/*_raw.neu`
   - **输出**：`GNSS-coordinated-anomaly/FiltDataOut/`
-    - `<SITE>_HHTfilt.txt`（`YYYYMMDD YYYY.DECM N_filt(mm) E_filt(mm) U_filt(mm) Azimuth(deg)`）
+    - `<SITE>_HHTfilt.txt` 或 `<SITE>_Bandfilt.txt`（`YYYYMMDD YYYY.DECM N_filt(mm) E_filt(mm) U_filt(mm) Azimuth(deg)`；HHT 模式为前者，带通模式为后者）
     - `stinfo.txt`（`site lat lon`）
-    - （默认开启）`<SITE>_HHTfilt.png`：N/E/U 滤波时间序列三子图；脚本顶部 `DEFAULT_ENABLE_PLOT` 控制默认行为，命令行可用 `--no-plot` 关闭
+    - （默认开启）同名 `.png`：N/E/U 滤波时间序列三子图；脚本顶部 `DEFAULT_ENABLE_PLOT` 控制默认行为，命令行可用 `--no-plot` 关闭
 - **空间格网 + 绘图**：`GNSS-coordinated-anomaly/GNSS-coordinated-anomaly-space.py`
-  - **输入**：`FiltDataOut/` 下的 `stinfo.txt` 与 `*_HHTfilt.txt`
-  - **特点**：支持 `--date-start/--date-end` 指定时间范围，或 `--dates` 指定个别日期点；格网统计与 PNG 等输出目录由脚本内默认配置（如 `Frames/`）决定
+  - **输入**：`FiltDataOut/` 下的 `stinfo.txt` 与 `*_HHTfilt.txt` 或 `*_Bandfilt.txt`
+  - **特点**：支持 `--date-start/--date-end` 指定时间范围，或 `--dates` 指定个别日期点；支持 `--gen-mode {all,hht,bandpass}`（默认 all：先跑 hht 再跑 bandpass；缺少某套输入会自动跳过）。输出到 `Frames/`：
+    - `ANGDIFF_MEAN_hht.txt` / `ANGDIFF_MEAN_bandpass.txt`
+    - `GNSS-coordinated-anomaly-hht-YYYYMMDD.png` / `GNSS-coordinated-anomaly-bandpass-YYYYMMDD.png`
 - **站点对滑动相关系数**：`GNSS-coordinated-anomaly/GNSS-coordinated-anomaly-time.py`
-  - **输入**：`FiltDataOut/*_HHTfilt.txt`
-  - **输出**：`GNSS-coordinated-anomaly/TimeCorrelationOut/` 下 `<站1>-<站2>-TimeCorrelation.txt`（及默认开启时的同名 `.png`）；站点对、窗长、步长等可在脚本顶部默认配置，也可命令行传参
+  - **输入**：`FiltDataOut/*_HHTfilt.txt` 或 `*_Bandfilt.txt`
+  - **输出**：`GNSS-coordinated-anomaly/TimeCorrelationOut/` 下 `<站1>-<站2>-TimeCorrelation-hht.txt` 与 `...-bandpass.txt`（及默认开启时的同名 `.png`）；支持 `--gen-mode {all,hht,bandpass}`（默认 all；缺少某套输入会自动跳过）。站点对、窗长、步长等可在脚本顶部默认配置，也可命令行传参
 
 依赖安装：在 `GNSS-coordinated-anomaly/` 目录执行 `pip install -r GNSS-coordinated-anomaly_requirements.txt`（含 `numpy`、`scipy`、`matplotlib`）。更详细说明见 [GNSS-coordinated-anomaly/GNSS-coordinated-anomaly_README.md](GNSS-coordinated-anomaly/GNSS-coordinated-anomaly_README.md)。
 
@@ -208,8 +209,8 @@ numerical/
 ├── extract_columns.py        # 多列提取
 ├── GNSS-ForamtTrans.py       # LXX 解算 NEU → CENC 样式 *_raw.neu
 ├── cut_datain_by_date.py     # 批量按日期截取 *_raw.neu（备份 .allbak）
-├── GNSS-coordinated-anomaly/
-│   ├── GNSS-coordinated-anomaly-filt.py   # HHT 频带滤波，输出 FiltDataOut
+├── GNSS-coordinated-anomaly/ # GNSS协调变形异常识别
+│   ├── GNSS-coordinated-anomaly-filt.py   # 频带滤波，输出 FiltDataOut
 │   ├── GNSS-coordinated-anomaly-space.py  # 空间格网统计与绘图（Frames 等）
 │   └── GNSS-coordinated-anomaly-time.py   # 站点对滑动相关系数（TimeCorrelationOut）
 ├── fault-movement-anomaly/   # 基于GNSS异常基线、跨断层异常基线等判定异常断层段
