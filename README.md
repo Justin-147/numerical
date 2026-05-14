@@ -77,6 +77,16 @@
 
 ---
 
+## Data-Anomaly-Class（多尺度 CNN-BiLSTM + 加性注意力时序分类）
+
+**基于 TensorFlow/Keras 的时序多分类示例。** 三路并行 `Conv1D`（核长 3/5/7）提取多尺度特征，双层 `BiLSTM` 建模长程依赖，加性注意力对时间步加权融合，再接全连接 + Softmax；优化器为 Adam，损失为稀疏分类交叉熵（整数标签）。
+
+- **主程序**：`Data-Anomaly-Class/Data-Anomaly-Class.py`
+- **说明**：详见 [Data-Anomaly-Class/Data-Anomaly-Class_README.md](Data-Anomaly-Class/Data-Anomaly-Class_README.md)
+- **依赖**：`pip install -r Data-Anomaly-Class/Data-Anomaly-Class_requirements.txt`（含 `tensorflow`、`numpy`、`matplotlib`、`pydot`、`graphviz`）；支持 `--mode train|predict` 加载 `best_model.keras` 仅推理；输入为逐条序列时间维 `[-1,1]` 缩放；详见子目录 README）
+
+---
+
 ## 异常识别与特征提取
 
 ### cycle-related-anomaly（破年变异常）
@@ -209,6 +219,7 @@ numerical/
 ├── extract_columns.py        # 多列提取
 ├── GNSS-ForamtTrans.py       # LXX 解算 NEU → CENC 样式 *_raw.neu
 ├── cut_datain_by_date.py     # 批量按日期截取 *_raw.neu（备份 .allbak）
+├── Data-Anomaly-Class/       # 多尺度 CNN-BiLSTM + 加性注意力时序分类（TensorFlow）
 ├── GNSS-coordinated-anomaly/ # GNSS协调变形异常识别
 │   ├── GNSS-coordinated-anomaly-filt.py   # 频带滤波，输出 FiltDataOut
 │   ├── GNSS-coordinated-anomaly-space.py  # 空间格网统计与绘图（Frames 等）

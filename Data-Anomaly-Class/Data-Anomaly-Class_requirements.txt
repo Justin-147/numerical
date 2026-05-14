@@ -1,0 +1,12 @@
+# Data-Anomaly-Class：多尺度 CNN-BiLSTM + 注意力 时序分类
+# Python 3.9+ 与 TensorFlow 2.x 建议使用相近主版本号
+#
+# 钉住 numpy<2：与 Anaconda 中 matplotlib 等科学栈兼容。
+# Windows 上 pip 的 tensorflow 2.17–2.20 曾出现 _pywrap_tensorflow_internal DLL 加载失败；
+# 固定 2.16.2（含 tensorflow-intel 依赖）在常见 Win10/11 + Python 3.11 环境下更稳定。
+numpy>=1.23.5,<2
+matplotlib>=3.5
+tensorflow==2.16.2
+# keras.utils.plot_model 导出结构图：需 pydot，且系统能找到 Graphviz 的 dot（见 README）
+pydot>=2.0
+graphviz>=0.20
